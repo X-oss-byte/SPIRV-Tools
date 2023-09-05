@@ -103,7 +103,7 @@ VARIANT_IGNORE_DECORATIONS = 3
 VARIANT_DUMP_IDS = 4
 
 def print_usage():
-    print("Usage: {} <path-to-spirv-diff>".format(sys.argv[0]))
+    print(f"Usage: {sys.argv[0]} <path-to-spirv-diff>")
 
 def remove_debug_info(in_path):
     tmp_dir = '.no_dbg'
@@ -112,7 +112,7 @@ def remove_debug_info(in_path):
         os.makedirs(tmp_dir)
 
     (in_basename, in_ext) = os.path.splitext(in_path)
-    out_name = in_basename + '_no_dbg' + in_ext
+    out_name = f'{in_basename}_no_dbg{in_ext}'
     out_path = os.path.join(tmp_dir, out_name)
 
     with open(in_path, 'r') as fin:
@@ -120,20 +120,27 @@ def remove_debug_info(in_path):
             for line in fin:
                 ops = line.strip().split()
                 op = ops[0] if len(ops) > 0 else ''
-                if (op != ';;' and op != 'OpName' and op != 'OpMemberName' and op != 'OpString' and
-                    op != 'OpLine' and op != 'OpNoLine' and op != 'OpModuleProcessed'):
+                if op not in [
+                    ';;',
+                    'OpName',
+                    'OpMemberName',
+                    'OpString',
+                    'OpLine',
+                    'OpNoLine',
+                    'OpModuleProcessed',
+                ]:
                     fout.write(line)
 
     return out_path
 
 def make_src_file(test_name):
-    return '{}_src.spvasm'.format(test_name)
+    return f'{test_name}_src.spvasm'
 
 def make_dst_file(test_name):
-    return '{}_dst.spvasm'.format(test_name)
+    return f'{test_name}_dst.spvasm'
 
 def make_cpp_file(test_name):
-    return '{}_autogen.cpp'.format(test_name)
+    return f'{test_name}_autogen.cpp'
 
 def make_camel_case(test_name):
     return test_name.replace('_', ' ').title().replace(' ', '')
@@ -159,7 +166,9 @@ def parse_test_comment(src_spirv_file_name, src_spirv):
         comment_line_count += 1
 
     if comment_line_count == 0:
-        print("Expected comment on test file '{}'.  See README.md next to this file.".format(src_spirv_file_name))
+        print(
+            f"Expected comment on test file '{src_spirv_file_name}'.  See README.md next to this file."
+        )
         sys.exit(1)
 
     comment_block = src_spirv_lines[:comment_line_count]
@@ -172,18 +181,16 @@ def parse_test_comment(src_spirv_file_name, src_spirv):
 def run_diff_tool(diff_tool, src_file, dst_file, variant):
     args = [diff_tool]
 
-    if variant == VARIANT_IGNORE_SET_BINDING or variant == VARIANT_IGNORE_DECORATIONS:
+    if variant in [VARIANT_IGNORE_SET_BINDING, VARIANT_IGNORE_DECORATIONS]:
         args.append('--ignore-set-binding')
 
-    if variant == VARIANT_IGNORE_LOCATION or variant == VARIANT_IGNORE_DECORATIONS:
+    if variant in [VARIANT_IGNORE_LOCATION, VARIANT_IGNORE_DECORATIONS]:
         args.append('--ignore-location')
 
     if variant == VARIANT_DUMP_IDS:
         args.append('--with-id-map')
 
-    args.append('--no-color')
-    args.append('--no-indent')
-
+    args.extend(('--no-color', '--no-indent'))
     args.append(src_file)
     args.append(dst_file)
 
@@ -270,9 +277,10 @@ def generate_tests(diff_tool, test_names):
 
 def generate_cmake(test_files):
     cmake = TEMPLATE_TEST_FILES_CMAKE.format(
-            script_name = os.path.basename(__file__),
-            license = make_comment(LICENSE, '#'),
-            test_files = '\n'.join(['"diff_files/{}"'.format(f) for f in test_files]))
+        script_name=os.path.basename(__file__),
+        license=make_comment(LICENSE, '#'),
+        test_files='\n'.join([f'"diff_files/{f}"' for f in test_files]),
+    )
 
     with open('diff_test_files_autogen.cmake', 'wb') as fout:
         fout.write(str.encode(cmake))
@@ -285,7 +293,7 @@ def main():
 
     diff_tool = sys.argv[1]
     if not os.path.exists(diff_tool):
-        print("No such file: {}".format(diff_tool))
+        print(f"No such file: {diff_tool}")
         print_usage()
         return 1
 

@@ -54,9 +54,7 @@ def mkdir_p(directory):
     try:
         os.makedirs(directory)
     except OSError as e:
-        if e.errno == errno.EEXIST and os.path.isdir(directory):
-            pass
-        else:
+        if e.errno != errno.EEXIST or not os.path.isdir(directory):
             raise
 
 def command_output(cmd, directory):
@@ -67,18 +65,18 @@ def command_output(cmd, directory):
     Raises a RuntimeError if the command fails to launch or otherwise fails.
     """
     try:
-      # Set shell=True on Windows so that Chromium's git.bat can be found when
-      # 'git' is invoked.
-      p = subprocess.Popen(cmd,
-                           cwd=directory,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE,
-                           shell=os.name == 'nt')
-      (stdout, stderr) = p.communicate()
-      if p.returncode != 0:
-        logging.error('Failed to run "{}" in "{}": {}'.format(cmd, directory, stderr.decode()))
+        # Set shell=True on Windows so that Chromium's git.bat can be found when
+        # 'git' is invoked.
+        p = subprocess.Popen(cmd,
+                             cwd=directory,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             shell=os.name == 'nt')
+        (stdout, stderr) = p.communicate()
+        if p.returncode != 0:
+            logging.error(f'Failed to run "{cmd}" in "{directory}": {stderr.decode()}')
     except Exception as e:
-        logging.error('Failed to run "{}" in "{}": {}'.format(cmd, directory, str(e)))
+        logging.error(f'Failed to run "{cmd}" in "{directory}": {str(e)}')
         return False, None
     return p.returncode == 0, stdout
 
@@ -97,9 +95,8 @@ def deduce_software_version(changes_file):
     # Linux.
     pattern = re.compile(r'^(v\d+\.\d+(-dev)?) \d\d\d\d-\d\d-\d\d\s*$')
     with open(changes_file, mode='r') as f:
-        for line in f.readlines():
-            match = pattern.match(line)
-            if match:
+        for line in f:
+            if match := pattern.match(line):
                 return True, match.group(1)
     return False, None
 
@@ -131,13 +128,13 @@ def describe(repo_path):
     # containing a (presumably) fixed timestamp.
     timestamp = int(os.environ.get('SOURCE_DATE_EPOCH', time.time()))
     iso_date = datetime.datetime.utcfromtimestamp(timestamp).isoformat()
-    return "unknown hash, {}".format(iso_date)
+    return f"unknown hash, {iso_date}"
 
 def main():
     FORMAT = '%(asctime)s %(message)s'
     logging.basicConfig(format="[%(asctime)s][%(levelname)-8s] %(message)s", datefmt="%H:%M:%S")
     if len(sys.argv) != 3:
-        logging.error("usage: {} <repo-path> <output-file>".format(sys.argv[0]))
+        logging.error(f"usage: {sys.argv[0]} <repo-path> <output-file>")
         sys.exit(1)
 
     changes_file_path = os.path.realpath(sys.argv[1])
@@ -145,8 +142,10 @@ def main():
 
     success, version = deduce_software_version(changes_file_path)
     if not success:
-      logging.error("Could not deduce latest release version from {}.".format(changes_file_path))
-      sys.exit(1)
+        logging.error(
+            f"Could not deduce latest release version from {changes_file_path}."
+        )
+        sys.exit(1)
 
     repo_path = os.path.dirname(changes_file_path)
     description = describe(repo_path)

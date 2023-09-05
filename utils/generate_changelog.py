@@ -46,16 +46,14 @@ def mkdir_p(directory):
     try:
         os.makedirs(directory)
     except OSError as e:
-        if e.errno == errno.EEXIST and os.path.isdir(directory):
-            pass
-        else:
+        if e.errno != errno.EEXIST or not os.path.isdir(directory):
             raise
 
 def main():
     FORMAT = '%(asctime)s %(message)s'
     logging.basicConfig(format="[%(asctime)s][%(levelname)-8s] %(message)s", datefmt="%H:%M:%S")
     if len(sys.argv) != 4:
-        logging.error("usage: {} <CHANGES-path> <tag> <output-file>".format(sys.argv[0]))
+        logging.error(f"usage: {sys.argv[0]} <CHANGES-path> <tag> <output-file>")
         sys.exit(1)
 
     changes_path = sys.argv[1]
@@ -65,23 +63,22 @@ def main():
     changelog = []
     has_found_start = False
     with open(changes_path, "r") as file:
-      for line in file.readlines():
-        m = VERSION_REGEX.match(line)
-        if m:
-          print(m.groups()[0])
-          print(start_tag)
-          if has_found_start:
-            break;
-          if start_tag == m.groups()[0]:
-            has_found_start = True
-          continue
+        for line in file:
+            if m := VERSION_REGEX.match(line):
+                print(m.groups()[0])
+                print(start_tag)
+                if has_found_start:
+                  break;
+                if start_tag == m.groups()[0]:
+                  has_found_start = True
+                continue
 
-        if has_found_start:
-          changelog.append(line)
+            if has_found_start:
+              changelog.append(line)
 
     if not has_found_start:
-      logging.error("No tag matching {} found.".format(start_tag))
-      sys.exit(1)
+        logging.error(f"No tag matching {start_tag} found.")
+        sys.exit(1)
 
     content = "".join(changelog)
     if os.path.isfile(output_file_path):

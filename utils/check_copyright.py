@@ -19,6 +19,7 @@ current directory.  Optionally insert them.  When inserting, replaces
 an MIT or Khronos free use license with Apache 2.
 """
 
+
 import argparse
 import fileinput
 import fnmatch
@@ -55,16 +56,16 @@ YEAR_REGEX = '(' + '|'.join(
 YEAR_RANGE_REGEX = '('
 for year1 in range(FIRST_YEAR, FINAL_YEAR + 1):
   for year2 in range(year1 + 1, FINAL_YEAR + 1):
-    YEAR_RANGE_REGEX += str(year1) + '-' + str(year2) + '|'
-YEAR_RANGE_REGEX = YEAR_RANGE_REGEX[:-1] + ')'
+    YEAR_RANGE_REGEX += f'{str(year1)}-{str(year2)}|'
+YEAR_RANGE_REGEX = f'{YEAR_RANGE_REGEX[:-1]})'
 
 # In the copyright info, the year can be a single year or a range.  This is a
 # regex to make sure it matches one of them.
-YEAR_OR_RANGE_REGEX = '(' + YEAR_REGEX + '|' + YEAR_RANGE_REGEX + ')'
+YEAR_OR_RANGE_REGEX = f'({YEAR_REGEX}|{YEAR_RANGE_REGEX})'
 
 # The final regular expression to match a valid copyright line.
-COPYRIGHT_RE = re.compile('Copyright \(c\) {} ({})'.format(
-    YEAR_OR_RANGE_REGEX, '|'.join(AUTHORS)))
+COPYRIGHT_RE = re.compile(
+    f"Copyright \(c\) {YEAR_OR_RANGE_REGEX} ({'|'.join(AUTHORS)})")
 
 MIT_BEGIN_RE = re.compile('Permission is hereby granted, '
                           'free of charge, to any person obtaining a')
@@ -119,17 +120,17 @@ def skip(line):
 
 
 def comment(text, prefix):
-    """Returns commented-out text.
+  """Returns commented-out text.
 
     Each line of text will be prefixed by prefix and a space character.  Any
     trailing whitespace will be trimmed.
     """
-    accum = ['{} {}'.format(prefix, line).rstrip() for line in text.split('\n')]
-    return '\n'.join(accum)
+  accum = [f'{prefix} {line}'.rstrip() for line in text.split('\n')]
+  return '\n'.join(accum)
 
 
 def insert_copyright(author, glob, comment_prefix):
-    """Finds all glob-matching files under the current directory and inserts the
+  """Finds all glob-matching files under the current directory and inserts the
     copyright message, and license notice.  An MIT license or Khronos free
     use license (modified MIT) is replaced with an Apache 2 license.
 
@@ -138,46 +139,45 @@ def insert_copyright(author, glob, comment_prefix):
     by comment_prefix and a space.
     """
 
-    copyright = comment('Copyright (c) {} {}'.format(CURRENT_YEAR, author),
-                        comment_prefix) + '\n\n'
-    licensed = comment(LICENSED, comment_prefix) + '\n\n'
-    for file in filtered_descendants(glob):
-        # Parsing states are:
-        #   0 Initial: Have not seen a copyright declaration.
-        #   1 Seen a copyright line and no other interesting lines
-        #   2 In the middle of an MIT or Khronos free use license
-        #   9 Exited any of the above
-        state = 0
-        update_file = False
-        for line in fileinput.input(file, inplace=1):
-            emit = True
-            if state == 0:
-                if COPYRIGHT_RE.search(line):
-                    state = 1
-                elif skip(line):
-                    pass
-                else:
-                    # Didn't see a copyright. Inject copyright and license.
-                    sys.stdout.write(copyright)
-                    sys.stdout.write(licensed)
-                    # Assume there isn't a previous license notice.
-                    state = 1
-            elif state == 1:
-                if MIT_BEGIN_RE.search(line):
-                    state = 2
-                    emit = False
-                elif APACHE2_BEGIN_RE.search(line):
-                    # Assume an Apache license is preceded by a copyright
-                    # notice.  So just emit it like the rest of the file.
-                    state = 9
-            elif state == 2:
-                # Replace the MIT license with Apache 2
-                emit = False
-                if MIT_END_RE.search(line):
-                    state = 9
-                    sys.stdout.write(licensed)
-            if emit:
-                sys.stdout.write(line)
+  copyright = (
+      comment(f'Copyright (c) {CURRENT_YEAR} {author}', comment_prefix) +
+      '\n\n')
+  licensed = comment(LICENSED, comment_prefix) + '\n\n'
+  update_file = False
+  for file in filtered_descendants(glob):
+    # Parsing states are:
+    #   0 Initial: Have not seen a copyright declaration.
+    #   1 Seen a copyright line and no other interesting lines
+    #   2 In the middle of an MIT or Khronos free use license
+    #   9 Exited any of the above
+    state = 0
+    for line in fileinput.input(file, inplace=1):
+      emit = True
+      if state == 0:
+        if COPYRIGHT_RE.search(line):
+          state = 1
+        elif not skip(line):
+          # Didn't see a copyright. Inject copyright and license.
+          sys.stdout.write(copyright)
+          sys.stdout.write(licensed)
+          # Assume there isn't a previous license notice.
+          state = 1
+      elif state == 1:
+          if MIT_BEGIN_RE.search(line):
+              state = 2
+              emit = False
+          elif APACHE2_BEGIN_RE.search(line):
+              # Assume an Apache license is preceded by a copyright
+              # notice.  So just emit it like the rest of the file.
+              state = 9
+      elif state == 2:
+          # Replace the MIT license with Apache 2
+          emit = False
+          if MIT_END_RE.search(line):
+              state = 9
+              sys.stdout.write(licensed)
+      if emit:
+          sys.stdout.write(line)
 
 
 def alert_if_no_copyright(glob, comment_prefix):
@@ -227,23 +227,24 @@ class ArgParser(argparse.ArgumentParser):
 
 
 def main():
-    glob_comment_pairs = [('*.h', '//'), ('*.hpp', '//'), ('*.sh', '#'),
-                          ('*.py', '#'), ('*.cpp', '//'),
-                          ('CMakeLists.txt', '#')]
-    argparser = ArgParser()
-    args = argparser.parse_args()
+  glob_comment_pairs = [('*.h', '//'), ('*.hpp', '//'), ('*.sh', '#'),
+                        ('*.py', '#'), ('*.cpp', '//'),
+                        ('CMakeLists.txt', '#')]
+  argparser = ArgParser()
+  args = argparser.parse_args()
 
-    if args.author:
-        if args.author not in AUTHORS:
-            print('error: --update argument must be in the AUTHORS list in '
-                  'check_copyright.py: {}'.format(AUTHORS))
-            sys.exit(1)
-        for pair in glob_comment_pairs:
-            insert_copyright(args.author, *pair)
-        sys.exit(0)
-    else:
-        count = sum([alert_if_no_copyright(*p) for p in glob_comment_pairs])
-        sys.exit(count > 0)
+  if args.author:
+    if args.author not in AUTHORS:
+      print(
+          f'error: --update argument must be in the AUTHORS list in check_copyright.py: {AUTHORS}'
+      )
+      sys.exit(1)
+    for pair in glob_comment_pairs:
+        insert_copyright(args.author, *pair)
+    sys.exit(0)
+  else:
+    count = sum(alert_if_no_copyright(*p) for p in glob_comment_pairs)
+    sys.exit(count > 0)
 
 
 if __name__ == '__main__':
