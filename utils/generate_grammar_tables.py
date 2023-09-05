@@ -46,9 +46,7 @@ def make_path_to_file(f):
     try:
         os.makedirs(dir)
     except OSError as e:
-        if e.errno == errno.EEXIST and os.path.isdir(dir):
-            pass
-        else:
+        if e.errno != errno.EEXIST or not os.path.isdir(dir):
             raise
 
 
@@ -59,7 +57,7 @@ def convert_min_required_version(version):
         return 'SPV_SPIRV_VERSION_WORD(1, 0)'
     if version == 'None':
         return '0xffffffffu'
-    return 'SPV_SPIRV_VERSION_WORD({})'.format(version.replace('.', ','))
+    return f"SPV_SPIRV_VERSION_WORD({version.replace('.', ',')})"
 
 
 def convert_max_required_version(version):
@@ -67,7 +65,7 @@ def convert_max_required_version(version):
     the symbol in SPIRV-Tools."""
     if version is None:
         return '0xffffffffu'
-    return 'SPV_SPIRV_VERSION_WORD({})'.format(version.replace('.', ','))
+    return f"SPV_SPIRV_VERSION_WORD({version.replace('.', ',')})"
 
 
 def compose_capability_list(caps):
@@ -93,9 +91,7 @@ def get_capability_array_name(caps):
     Args:
       - caps: a sequence of capability names
     """
-    if not caps:
-        return 'nullptr'
-    return '{}_caps_{}'.format(PYGEN_VARIABLE_PREFIX, ''.join(caps))
+    return f"{PYGEN_VARIABLE_PREFIX}_caps_{''.join(caps)}" if caps else 'nullptr'
 
 
 def generate_capability_arrays(caps):
@@ -104,15 +100,14 @@ def generate_capability_arrays(caps):
     Arguments:
       - caps: a sequence of sequence of capability names
     """
-    caps = sorted(set([tuple(c) for c in caps if c]))
-    cap_str = 'SpvCapability'
+    caps = sorted({tuple(c) for c in caps if c})
     global OUTPUT_LANGUAGE
-    if OUTPUT_LANGUAGE == 'c++':
-        cap_str = 'spv::Capability'
+    cap_str = 'spv::Capability' if OUTPUT_LANGUAGE == 'c++' else 'SpvCapability'
     arrays = [
-        'static const ' + cap_str + ' {}[] = {};'.format(
-            get_capability_array_name(c), compose_capability_list(c))
-        for c in caps]
+        f'static const {cap_str}'
+        + f' {get_capability_array_name(c)}[] = {compose_capability_list(c)};'
+        for c in caps
+    ]
     return '\n'.join(arrays)
 
 
@@ -125,8 +120,7 @@ def compose_extension_list(exts):
     Returns:
       a string containing the braced list of extensions named by exts.
     """
-    return '{' + ', '.join(
-        ['spvtools::Extension::k{}'.format(e) for e in exts]) + '}'
+    return (('{' + ', '.join([f'spvtools::Extension::k{e}' for e in exts])) + '}')
 
 
 def get_extension_array_name(extensions):
@@ -138,8 +132,7 @@ def get_extension_array_name(extensions):
     if not extensions:
         return 'nullptr'
     else:
-        return '{}_exts_{}'.format(
-            PYGEN_VARIABLE_PREFIX, ''.join(extensions))
+        return f"{PYGEN_VARIABLE_PREFIX}_exts_{''.join(extensions)}"
 
 
 def generate_extension_arrays(extensions):
@@ -148,11 +141,11 @@ def generate_extension_arrays(extensions):
     Arguments:
       - caps: a sequence of sequence of extension names
     """
-    extensions = sorted(set([tuple(e) for e in extensions if e]))
+    extensions = sorted({tuple(e) for e in extensions if e})
     arrays = [
-        'static const spvtools::Extension {}[] = {};'.format(
-            get_extension_array_name(e), compose_extension_list(e))
-        for e in extensions]
+        f'static const spvtools::Extension {get_extension_array_name(e)}[] = {compose_extension_list(e)};'
+        for e in extensions
+    ]
     return '\n'.join(arrays)
 
 
@@ -175,9 +168,9 @@ def convert_operand_kind(operand_tuple):
         kind = 'TypeId'
     elif kind == 'IdResult':
         kind = 'ResultId'
-    elif kind == 'IdMemorySemantics' or kind == 'MemorySemantics':
+    elif kind in ['IdMemorySemantics', 'MemorySemantics']:
         kind = 'MemorySemanticsId'
-    elif kind == 'IdScope' or kind == 'Scope':
+    elif kind in ['IdScope', 'Scope']:
         kind = 'ScopeId'
     elif kind == 'IdRef':
         kind = 'Id'
@@ -211,9 +204,9 @@ def convert_operand_kind(operand_tuple):
         kind = 'FpFastMathMode'
 
     if quantifier == '?':
-        kind = 'Optional{}'.format(kind)
+        kind = f'Optional{kind}'
     elif quantifier == '*':
-        kind = 'Variable{}'.format(kind)
+        kind = f'Variable{kind}'
 
     return 'SPV_OPERAND_TYPE_{}'.format(
         re.sub(r'([a-z])([A-Z])', r'\1_\2', kind).upper())
@@ -266,10 +259,7 @@ class InstInitializer(object):
 
     def __str__(self):
         global OUTPUT_LANGUAGE
-        base_str = 'SpvOp'
-        if OUTPUT_LANGUAGE == 'c++':
-            base_str = 'spv::Op::Op'
-
+        base_str = 'spv::Op::Op' if OUTPUT_LANGUAGE == 'c++' else 'SpvOp'
         template = ['{{"{opname}"', base_str + '{opname}',
                     '{num_caps}', '{caps_mask}',
                     '{num_operands}', '{{{operands}}}',
@@ -456,10 +446,7 @@ def generate_enum_operand_kind_entry(entry, extension_map):
     enumerant = entry.get('enumerant')
     value = entry.get('value')
     caps = entry.get('capabilities', [])
-    if value in extension_map:
-        exts = extension_map[value]
-    else:
-        exts = []
+    exts = extension_map[value] if value in extension_map else []
     params = entry.get('parameters', [])
     params = [p.get('kind') for p in params]
     params = zip(params, [''] * len(params))
@@ -567,21 +554,25 @@ def generate_operand_kind_table(enums):
 def get_extension_list(instructions, operand_kinds):
     """Returns extensions as an alphabetically sorted list of strings."""
 
-    things_with_an_extensions_field = [item for item in instructions]
+    things_with_an_extensions_field = list(instructions)
 
-    enumerants = sum([item.get('enumerants', [])
-                      for item in operand_kinds], [])
+    enumerants = sum((item.get('enumerants', []) for item in operand_kinds), [])
 
     things_with_an_extensions_field.extend(enumerants)
 
-    extensions = sum([item.get('extensions', [])
-                      for item in things_with_an_extensions_field
-                      if item.get('extensions')], [])
+    extensions = sum(
+        (
+            item.get('extensions', [])
+            for item in things_with_an_extensions_field
+            if item.get('extensions')
+        ),
+        [],
+    )
 
     for item in EXTENSIONS_FROM_SPIRV_REGISTRY_AND_NOT_FROM_GRAMMARS.split():
             # If it's already listed in a grammar, then don't put it in the
             # special exceptions list.
-        assert item not in extensions, 'Extension %s is already in a grammar file' % item
+        assert item not in extensions, f'Extension {item} is already in a grammar file'
 
     extensions.extend(
         EXTENSIONS_FROM_SPIRV_REGISTRY_AND_NOT_FROM_GRAMMARS.split())
@@ -598,20 +589,27 @@ def get_extension_list(instructions, operand_kinds):
 def get_capabilities(operand_kinds):
     """Returns capabilities as a list of JSON objects, in order of
     appearance."""
-    enumerants = sum([item.get('enumerants', []) for item in operand_kinds
-                      if item.get('kind') in ['Capability']], [])
-    return enumerants
+    return sum(
+        (
+            item.get('enumerants', [])
+            for item in operand_kinds
+            if item.get('kind') in ['Capability']
+        ),
+        [],
+    )
 
 
 def generate_extension_enum(extensions):
     """Returns enumeration containing extensions declared in the grammar."""
-    return ',\n'.join(['k' + extension for extension in extensions])
+    return ',\n'.join([f'k{extension}' for extension in extensions])
 
 
 def generate_extension_to_string_mapping(extensions):
     """Returns mapping function from extensions to corresponding strings."""
-    function = 'const char* ExtensionToString(Extension extension) {\n'
-    function += '  switch (extension) {\n'
+    function = (
+        'const char* ExtensionToString(Extension extension) {\n'
+        + '  switch (extension) {\n'
+    )
     template = '    case Extension::k{extension}:\n' \
         '      return "{extension}";\n'
     function += ''.join([template.format(extension=extension)
@@ -623,7 +621,7 @@ def generate_extension_to_string_mapping(extensions):
 def generate_string_to_extension_mapping(extensions):
     """Returns mapping function from strings to corresponding extensions."""
 
-    function = '''
+    return '''
     bool GetExtensionFromString(const char* str, Extension* extension) {{
         static const char* known_ext_strs[] = {{ {strs} }};
         static const Extension known_ext_ids[] = {{ {ids} }};
@@ -638,10 +636,10 @@ def generate_string_to_extension_mapping(extensions):
         *extension = known_ext_ids[found.first - b];
         return true;
     }}
-    '''.format(strs=', '.join(['"{}"'.format(e) for e in extensions]),
-               ids=', '.join(['Extension::k{}'.format(e) for e in extensions]))
-
-    return function
+    '''.format(
+        strs=', '.join([f'"{e}"' for e in extensions]),
+        ids=', '.join([f'Extension::k{e}' for e in extensions]),
+    )
 
 
 def generate_capability_to_string_mapping(operand_kinds):
@@ -656,27 +654,35 @@ def generate_capability_to_string_mapping(operand_kinds):
         cap_str = 'spv::Capability'
         cap_join = '::'
 
-    function = 'const char* CapabilityToString(' + cap_str + ' capability) {\n'
+    function = f'const char* CapabilityToString({cap_str}' + ' capability) {\n'
     function += '  switch (capability) {\n'
-    template = '    case ' + cap_str + cap_join + '{capability}:\n' \
+    template = (
+        f'    case {cap_str}{cap_join}' + '{capability}:\n'
         '      return "{capability}";\n'
+    )
     emitted = set()  # The values of capabilities we already have emitted
     for capability in get_capabilities(operand_kinds):
         value = capability.get('value')
         if value not in emitted:
             emitted.add(value)
             function += template.format(capability=capability.get('enumerant'))
-    function += '    case ' + cap_str + cap_join + 'Max:\n' \
-        '      assert(0 && "Attempting to convert ' + cap_str + cap_join + 'Max to string");\n' \
-        '      return "";\n'
+    function += (
+        (
+            (
+                f'    case {cap_str}{cap_join}' + 'Max:\n'
+                '      assert(0 && "Attempting to convert '
+            )
+            + cap_str
+        )
+        + cap_join
+    ) + 'Max to string");\n' '      return "";\n'
     function += '  }\n\n  return "";\n}'
     return function
 
 
 def generate_all_string_enum_mappings(extensions, operand_kinds):
     """Returns all string-to-enum / enum-to-string mapping tables."""
-    tables = []
-    tables.append(generate_extension_to_string_mapping(extensions))
+    tables = [generate_extension_to_string_mapping(extensions)]
     tables.append(generate_string_to_extension_mapping(extensions))
     tables.append(generate_capability_to_string_mapping(operand_kinds))
     return '\n\n'.join(tables)
@@ -693,7 +699,7 @@ def precondition_operand_kinds(operand_kinds):
         kind = kind_entry.get('kind')
         for enum_entry in kind_entry.get('enumerants', []):
             value = enum_entry.get('value')
-            key = kind + '.' + str(value)
+            key = f'{kind}.{str(value)}'
             if key in exts:
                 exts[key].extend(enum_entry.get('extensions', []))
             else:
@@ -705,7 +711,7 @@ def precondition_operand_kinds(operand_kinds):
         kind = kind_entry.get('kind')
         for enum_entry in kind_entry.get('enumerants', []):
             value = enum_entry.get('value')
-            key = kind + '.' + str(value)
+            key = f'{kind}.{str(value)}'
             if len(exts[key]) > 0:
                 enum_entry['extensions'] = exts[key]
 

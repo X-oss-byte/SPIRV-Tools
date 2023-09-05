@@ -145,26 +145,28 @@ class TestStatus:
     self.returncode = returncode
     # Some of our MacOS bots still run Python 2, so need to be backwards
     # compatible here.
-    if type(stdout) is not str:     
-      if sys.version_info[0] == 2:
-       self.stdout = stdout.decode('utf-8')
-      elif sys.version_info[0] == 3:
-        self.stdout = str(stdout, encoding='utf-8') if stdout is not None else stdout
-      else:
-        raise Exception('Unable to determine if running Python 2 or 3 from {}'.format(sys.version_info))
-    else:
+    if type(stdout) is str:
       self.stdout = stdout
-    
-    if type(stderr) is not str:     
-      if sys.version_info[0] == 2:
-       self.stderr = stderr.decode('utf-8')
-      elif sys.version_info[0] == 3:
-        self.stderr = str(stderr, encoding='utf-8') if stderr is not None else stderr
-      else:
-        raise Exception('Unable to determine if running Python 2 or 3 from {}'.format(sys.version_info))
+
+    elif sys.version_info[0] == 2:
+      self.stdout = stdout.decode('utf-8')
+    elif sys.version_info[0] == 3:
+      self.stdout = str(stdout, encoding='utf-8') if stdout is not None else stdout
     else:
+      raise Exception(
+          f'Unable to determine if running Python 2 or 3 from {sys.version_info}'
+      )
+    if type(stderr) is str:
       self.stderr = stderr
 
+    elif sys.version_info[0] == 2:
+      self.stderr = stderr.decode('utf-8')
+    elif sys.version_info[0] == 3:
+      self.stderr = str(stderr, encoding='utf-8') if stderr is not None else stderr
+    else:
+      raise Exception(
+          f'Unable to determine if running Python 2 or 3 from {sys.version_info}'
+      )
     # temporary directory where the test runs
     self.directory = directory
     # List of inputs, as PlaceHolder objects.
@@ -203,10 +205,10 @@ def inside_spirv_testsuite(testsuite_name):
     if not isinstance(cls.spirv_args, list):
       raise SpirvTestException('spirv_args needs to be a list')
     if not any(
-        [m.startswith(VALIDATE_METHOD_PREFIX) for m in get_all_methods(cls)]):
+        m.startswith(VALIDATE_METHOD_PREFIX) for m in get_all_methods(cls)):
       raise SpirvTestException('No check_*() methods found in the test case')
     if not all(
-        [isinstance(v, (bool, str, list)) for v in get_all_variables(cls)]):
+        isinstance(v, (bool, str, list)) for v in get_all_variables(cls)):
       raise SpirvTestException(
           'expected_* variables are only allowed to be bool, str, or '
           'list type.')
@@ -233,8 +235,8 @@ class TestManager:
     """Call this to notify the manager of the results of a test run."""
     self.num_successes += 1 if success else 0
     self.num_failures += 0 if success else 1
-    counter_string = str(self.num_successes + self.num_failures) + '/' + str(
-        self.num_tests)
+    counter_string = (
+        f'{str(self.num_successes + self.num_failures)}/{str(self.num_tests)}')
     print('%-10s %-40s ' % (counter_string, test_case.test.name()) +
           ('Passed' if success else '-Failed-'))
     if not success:

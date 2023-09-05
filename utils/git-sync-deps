@@ -79,13 +79,13 @@ def git_executable():
       try:
         version_info = subprocess.check_output([git, '--version']).decode('utf-8')
         match = re.search("^git version (\d+)\.(\d+)",version_info)
-        print("Using {}".format(version_info))
+        print(f"Using {version_info}")
         if match:
           major = int(match.group(1))
           minor = int(match.group(2))
         else:
           continue
-      except (OSError,):
+      except OSError:
         continue
       return (git,major,minor)
   return (None,0,0)
@@ -98,8 +98,7 @@ def get_deps_os_str(deps_file):
   parsed_deps = parse_file_to_dict(deps_file)
   parts = []
   if 'deps_os' in parsed_deps:
-    for deps_os in parsed_deps['deps_os']:
-      parts.append(' [{}]]'.format(deps_os))
+    parts.extend(f' [{deps_os}]]' for deps_os in parsed_deps['deps_os'])
   return "\n".join(parts)
 
 def looks_like_raw_commit(commit):
@@ -133,7 +132,8 @@ def is_git_toplevel(git, directory):
 
 def status(directory, checkoutable):
   def truncate(s, length):
-    return s if len(s) <= length else '...' + s[-(length - 3):]
+    return s if len(s) <= length else f'...{s[-(length - 3):]}'
+
   dlen = 36
   directory = truncate(directory, dlen)
   checkoutable = truncate(checkoutable, 40)
@@ -168,7 +168,8 @@ def git_checkout_to_directory(git, repo, checkoutable, directory, verbose, treel
     filter = ['--filter=tree:0'] if treeless else ['--filter=blob:none']
     # If the thing to check out looks like a tag (and not like a commit),
     # then limit the checkout to that branch.
-    branch = [] if looks_like_raw_commit(checkoutable) else ['--branch={}'.format(checkoutable)]
+    branch = ([] if looks_like_raw_commit(checkoutable) else
+              [f'--branch={checkoutable}'])
     subprocess.check_call(
         [git, 'clone', '--quiet', '--single-branch'] + filter + branch + [repo, directory])
 
@@ -186,8 +187,11 @@ def git_checkout_to_directory(git, repo, checkoutable, directory, verbose, treel
   with open(os.devnull, 'w') as devnull:
     # If this fails, we will fetch before trying again.  Don't spam user
     # with error information.
-    if 0 == subprocess.call([git, 'checkout', '--quiet', checkoutable],
-                            cwd=directory, stderr=devnull):
+    if (subprocess.call(
+        [git, 'checkout', '--quiet', checkoutable],
+        cwd=directory,
+        stderr=devnull,
+    ) == 0):
       # if this succeeds, skip slow `git fetch`.
       if verbose:
         status(directory, checkoutable)  # Success.
@@ -244,7 +248,7 @@ def git_sync_deps(deps_file_path, command_line_os_requests, verbose, treeless):
   deps_file_directory = os.path.dirname(deps_file_path)
   deps_file = parse_file_to_dict(deps_file_path)
   dependencies = deps_file['deps'].copy()
-  os_specific_dependencies = deps_file.get('deps_os', dict())
+  os_specific_dependencies = deps_file.get('deps_os', {})
   if 'all' in command_line_os_requests:
     for value in list(os_specific_dependencies.values()):
       dependencies.update(value)
@@ -255,7 +259,7 @@ def git_sync_deps(deps_file_path, command_line_os_requests, verbose, treeless):
         dependencies.update(os_specific_dependencies[os_name])
   for directory in dependencies:
     for other_dir in dependencies:
-      if directory.startswith(other_dir + '/'):
+      if directory.startswith(f'{other_dir}/'):
         raise Exception('%r is parent of %r' % (other_dir, directory))
   list_of_arg_lists = []
   for directory in sorted(dependencies):
